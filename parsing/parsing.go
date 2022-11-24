@@ -70,7 +70,7 @@ func parseExpedition(tokenizer *html.Tokenizer) Expedition {
 	//Разберем текст после тэга с ссылкой (название)
 	tokenizer.Next()
 	token = tokenizer.Token()
-	expedition.Name = token.Data
+	expedition.Name = strings.TrimSpace(token.Data)
 
 	//Перейдем к следующему токену
 	tokenizer.Next()
