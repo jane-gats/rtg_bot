@@ -77,7 +77,7 @@ func parseExpedition(tokenizer *html.Tokenizer) Expedition {
 	return expedition
 }
 
-func ParseHTML(url string) []Expedition {
+func FetchExpeditionsFromUrl(url string) []Expedition {
 	res, err := http.Get(url)
 	defer res.Body.Close()
 
