@@ -30,6 +30,9 @@ type webhookReqBody struct {
 		Chat struct {
 			ID int64 `json:"id"`
 		} `json:"chat"`
+		User struct {
+			Username string `json:"username"`
+		} `json:"from"`
 	} `json:"message"`
 }
 
@@ -47,63 +50,19 @@ const expeditionUrl = "https://russiantravelgeek.com/expeditions/"
 
 const apiString = "5741027893:AAHgH5pyL7gQWm8MLyTuuG7lO9ftUvAliyQ" //защитить
 
+var openForms = make(map[int64]*Form, 100)
+var expeditionList []parsing.Expedition
+
 func main() {
 	fmt.Println("Started")
+	expeditionList = parsing.FetchExpeditionsFromUrl(expeditionUrl)
+	go continiousFetchExpedition()
 
-	expeditionList := parsing.FetchExpeditionsFromUrl(expeditionUrl)
-	go continiousParseExpedition(expeditionList)
+	http.ListenAndServe(":3000", http.HandlerFunc(menuHandler))
 
-	http.ListenAndServe(":3000", http.HandlerFunc(Handler))
-
-	// fmt.Println("Started")
-	// bot, err := tgbotapi.NewBotAPI(apiString)
-	// if err != nil {
-	// 	log.Panic(err)
-	// }
-	// //bot.Debug = true
-	// //log.Printf("Authorized on account %s", bot.Self.UserName)
-
-	// u := tgbotapi.NewUpdate(0)
-	// u.Timeout = 60
-
-	// expeditionList := parsing.FetchExpeditionsFromUrl(expeditionUrl)
-	// go continiousParseExpedition(expeditionList)
-
-	// var form Form
-
-	// updates := bot.GetUpdatesChan(u)
-	// for update := range updates {
-	// 	if update.Message == nil { // ignore any non-Message updates
-	// 		continue
-	// 	}
-	// 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
-	// 	if !update.Message.IsCommand() { // ignore any non-command Messages
-	// 		msg.Text = "Чтобы посмотреть список экспедиций, нажмите /find \nЧтобы подать заявку на экспедицию, нажмите /go"
-	// 		if _, err := bot.Send(msg); err != nil {
-	// 			log.Panic(err)
-	// 		}
-	// 		continue
-	// 	}
-
-	// 	switch update.Message.Command() {
-	// 	case "find":
-	// 		find(msg, bot)
-	// 	case "go":
-	// 		form.tg_name = update.Message.From.UserName
-	// 		ask_expediton(msg, bot, updates, &form, expeditionList)
-	// 		ask(msg, bot, updates, &form, "Имя и фамилия:")
-	// 		ask(msg, bot, updates, &form, "Электронный адрес:")
-	// 		ask(msg, bot, updates, &form, "Возраст:")
-	// 		check_info(msg, bot, form)
-	// 		//send_info(form)
-	// 		//https://t.me/+aCYdv4e0hmw0NWUy
-	// 	default:
-	// 		msg.Text = "I don't know that command"
-	// 	}
-	// }
 }
 
-func Handler(res http.ResponseWriter, req *http.Request) {
+func menuHandler(res http.ResponseWriter, req *http.Request) {
 	// First, decode the JSON response body
 	body := &webhookReqBody{}
 	if err := json.NewDecoder(req.Body).Decode(body); err != nil {
@@ -117,20 +76,51 @@ func Handler(res http.ResponseWriter, req *http.Request) {
 		case "/find":
 			if err := find(body.Message.Chat.ID); err != nil {
 				fmt.Println("error in sending reply:", err)
-				return
 			}
 		case "/go":
-			return
+			if err := ask(body.Message.Chat.ID, body.Message.User.Username); err != nil {
+				fmt.Println("error in sending reply:", err)
+			}
 		default:
 			return
 		}
+	} else {
+		var chatId = body.Message.Chat.ID
+		if _, ok := openForms[chatId]; !ok {
+			sendMessageReq("Чтобы посмотреть список экспедиций, нажмите /find \nЧтобы подать заявку на экспедицию, нажмите /go", body.Message.Chat.ID)
+			return
+		}
+		v := openForms[chatId]
+		if v.tg_name == "" {
+			sendMessageReq("!Чтобы посмотреть список экспедиций, нажмите /find \nЧтобы подать заявку на экспедицию, нажмите /go", body.Message.Chat.ID)
+			return
+		}
+		switch {
+		case v.expediton == "":
+			v.expediton = text
+			fmt.Println("text = " + text)
+			sendMessageReq("Имя и Фамилия", chatId)
+		case v.name == "":
+			v.name = text
+			sendMessageReq("Электронный адрес", chatId)
+		case v.email == "":
+			v.email = text
+			sendMessageReq("Возраст", chatId)
+		case v.age == "":
+			v.age = text
+			sendMessageReq("Завка отправлена", chatId)
+			delete(openForms, chatId)
+			//todo:проверка формы перед отправкой с возможностью редактирования
+			//отправить в гугл форму
+		}
+
 	}
 
 	// log a confirmation message if the message is sent successfully
 	fmt.Println("reply sent")
 }
 
-func continiousParseExpedition(expeditionList []parsing.Expedition) {
+func continiousFetchExpedition() {
 	c := time.Tick(5 * time.Minute)
 	for now := range c {
 		fmt.Println("Expedition list fetched", now)
@@ -152,6 +142,121 @@ func check_info(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI, form Form) {
 	}
 }
 
+func sendMessageReq(text string, chatID int64) error {
+	// Create the request body struct
+	reqBody := &sendMessageReqBody{
+		ChatID:    chatID,
+		Text:      text,
+		ParseMode: "HTML",
+	}
+	// Create the JSON body from the struct
+	reqBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return err
+	}
+	// Send a post request with your token
+	var sendMessageUrl = fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", apiString)
+	res, err := http.Post(sendMessageUrl, "application/json", bytes.NewBuffer(reqBytes))
+	if err != nil {
+		return err
+	}
+	if res.StatusCode != http.StatusOK {
+		return errors.New("unexpected status" + res.Status)
+	}
+	return nil
+}
+
+func find(chatID int64) error {
+	var text string
+	for _, val := range expeditionList {
+		text = "<b>" + val.Name + "</b> \n"
+		text += val.Place + "\n"
+		text += val.Link + "\n"
+		text += "\n"
+
+		err := sendMessageReq(text, chatID)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ask(chatID int64, userName string) error {
+	fmt.Println("hi" + userName)
+	delete(openForms, chatID)
+	openForms[chatID] = &Form{tg_name: userName}
+
+	err := sendMessageReq("Куда идем?", chatID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// func ask_expediton(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, form *Form, expeditionList []parsing.Expedition) {
+// 	msg.Text = "Куда идем?"
+// 	msg.ReplyMarkup = setupKeyboard(expeditionList)
+
+// 	if _, err := bot.Send(msg); err != nil {
+// 		log.Panic(err)
+// 	}
+
+// 	for update := range updates {
+// 		if update.CallbackQuery != nil {
+// 			// Respond to the callback query, telling Telegram to show the user
+// 			// a message with the data received.
+// 			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, update.CallbackQuery.Data)
+// 			if _, err := bot.Request(callback); err != nil {
+// 				panic(err)
+// 			}
+// 			form.expediton = callback.Text
+// 			// And finally, send a message containing the data received.
+// 			msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Data)
+// 			if _, err := bot.Send(msg); err != nil {
+// 				panic(err)
+// 			}
+// 			break
+// 		}
+// 	}
+// }
+
+// func ask(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, form *Form, q string) {
+// 	msg.Text = q
+// 	if _, err := bot.Send(msg); err != nil {
+// 		log.Panic(err)
+// 	}
+
+// 	for update := range updates {
+// 		if update.Message != nil {
+// 			//это можно сделать без повторения списков вопросов? можно. Как?
+// 			switch q {
+// 			case "Имя и фамилия:":
+// 				form.name = update.Message.Text
+// 			case "Электронный адрес:":
+// 				form.email = update.Message.Text
+// 			case "Возраст:":
+// 				form.age = update.Message.Text
+// 			}
+// 			break
+// 		}
+// 	}
+// }
+
+func setupKeyboard(expeditionList []parsing.Expedition) tgbotapi.InlineKeyboardMarkup {
+	buttons := make([][]tgbotapi.InlineKeyboardButton, 0, len(expeditionList))
+
+	for _, expedition := range expeditionList {
+		buttons = append(buttons,
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData(expedition.Name, expedition.Place)))
+	}
+	var numericKeyboard = tgbotapi.NewInlineKeyboardMarkup(buttons...)
+
+	return numericKeyboard
+}
+
 // func find(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI) {
 // 	expList := parsing.FetchExpeditionsFromUrl("https://russiantravelgeek.com/expeditions/") //убрать
 // 	msg.ParseMode = "HTML"
@@ -169,97 +274,49 @@ func check_info(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI, form Form) {
 // 	}
 // }
 
-func find(chatID int64) error {
-	expList := parsing.FetchExpeditionsFromUrl("https://russiantravelgeek.com/expeditions/") //убрать
-	var text string
-	for _, val := range expList {
-		text = "<b>" + val.Name + "</b> \n"
-		text += val.Place + "\n"
-		text += val.Link + "\n"
-		text += "\n"
+// fmt.Println("Started")
+// bot, err := tgbotapi.NewBotAPI(apiString)
+// if err != nil {
+// 	log.Panic(err)
+// }
+// //bot.Debug = true
+// //log.Printf("Authorized on account %s", bot.Self.UserName)
 
-		// Create the request body struct
-		reqBody := &sendMessageReqBody{
-			ChatID:    chatID,
-			Text:      text,
-			ParseMode: "HTML",
-		}
-		// Create the JSON body from the struct
-		reqBytes, err := json.Marshal(reqBody)
-		if err != nil {
-			return err
-		}
-		// Send a post request with your token
-		var sendMessageUrl = fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", apiString)
-		res, err := http.Post(sendMessageUrl, "application/json", bytes.NewBuffer(reqBytes))
-		if err != nil {
-			return err
-		}
-		if res.StatusCode != http.StatusOK {
-			return errors.New("unexpected status" + res.Status)
-		}
-	}
-	return nil
-}
+// u := tgbotapi.NewUpdate(0)
+// u.Timeout = 60
 
-func ask_expediton(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, form *Form, expeditionList []parsing.Expedition) {
-	msg.Text = "Куда идем?"
-	msg.ReplyMarkup = setupKeyboard(expeditionList)
+// expeditionList := parsing.FetchExpeditionsFromUrl(expeditionUrl)
+// go continiousParseExpedition(expeditionList)
 
-	if _, err := bot.Send(msg); err != nil {
-		log.Panic(err)
-	}
+// var form Form
 
-	for update := range updates {
-		if update.CallbackQuery != nil {
-			// Respond to the callback query, telling Telegram to show the user
-			// a message with the data received.
-			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, update.CallbackQuery.Data)
-			if _, err := bot.Request(callback); err != nil {
-				panic(err)
-			}
-			form.expediton = callback.Text
-			// And finally, send a message containing the data received.
-			msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Data)
-			if _, err := bot.Send(msg); err != nil {
-				panic(err)
-			}
-			break
-		}
-	}
-}
+// updates := bot.GetUpdatesChan(u)
+// for update := range updates {
+// 	if update.Message == nil { // ignore any non-Message updates
+// 		continue
+// 	}
+// 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
+// 	if !update.Message.IsCommand() { // ignore any non-command Messages
+// 		msg.Text = "Чтобы посмотреть список экспедиций, нажмите /find \nЧтобы подать заявку на экспедицию, нажмите /go"
+// 		if _, err := bot.Send(msg); err != nil {
+// 			log.Panic(err)
+// 		}
+// 		continue
+// 	}
 
-func ask(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, form *Form, q string) {
-	msg.Text = q
-	if _, err := bot.Send(msg); err != nil {
-		log.Panic(err)
-	}
-
-	for update := range updates {
-		if update.Message != nil {
-			//это можно сделать без повторения списков вопросов? можно. Как?
-			switch q {
-			case "Имя и фамилия:":
-				form.name = update.Message.Text
-			case "Электронный адрес:":
-				form.email = update.Message.Text
-			case "Возраст:":
-				form.age = update.Message.Text
-			}
-			break
-		}
-	}
-}
-
-func setupKeyboard(expeditionList []parsing.Expedition) tgbotapi.InlineKeyboardMarkup {
-	buttons := make([][]tgbotapi.InlineKeyboardButton, 0, len(expeditionList))
-
-	for _, expedition := range expeditionList {
-		buttons = append(buttons,
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData(expedition.Name, expedition.Place)))
-	}
-	var numericKeyboard = tgbotapi.NewInlineKeyboardMarkup(buttons...)
-
-	return numericKeyboard
-}
+// 	switch update.Message.Command() {
+// 	case "find":
+// 		find(msg, bot)
+// 	case "go":
+// 		form.tg_name = update.Message.From.UserName
+// 		ask_expediton(msg, bot, updates, &form, expeditionList)
+// 		ask(msg, bot, updates, &form, "Имя и фамилия:")
+// 		ask(msg, bot, updates, &form, "Электронный адрес:")
+// 		ask(msg, bot, updates, &form, "Возраст:")
+// 		check_info(msg, bot, form)
+// 		//send_info(form)
+// 		//https://t.me/+aCYdv4e0hmw0NWUy
+// 	default:
+// 		msg.Text = "I don't know that command"
+// 	}
+// }
