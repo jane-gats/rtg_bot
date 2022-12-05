@@ -1,7 +1,7 @@
 package parsing
 
 import (
-	"fmt"
+	//"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -9,74 +9,133 @@ import (
 	"golang.org/x/net/html"
 )
 
+type Expedition struct {
+	Place string
+	Name  string
+	Link  string
+}
 
+func parseTokenizer(tokenizer *html.Tokenizer) []Expedition {
+	expeditionList := make([]Expedition, 0, 100)
 
-func ParseHTML (url string) []string {
-	fmt.Println(1)
+	tokenType := tokenizer.Next()
+
+	for tokenType != html.ErrorToken {
+		if tokenType != html.StartTagToken {
+			tokenType = tokenizer.Next()
+			continue
+		}
+
+		token := tokenizer.Token()
+		if token.Data != "p" {
+			tokenType = tokenizer.Next()
+			continue
+		}
+
+		for _, a := range token.Attr {
+			if strings.Contains(a.Val, "exp_title_place") {
+				expedition := parseExpedition(tokenizer)
+				expeditionList = append(expeditionList, expedition)
+			}
+		}
+	}
+	return expeditionList
+}
+
+func parseExpedition(tokenizer *html.Tokenizer) Expedition {
+	var expedition Expedition
+	// Разберем параграф с местом и временем экспедиции
+	tokenizer.Next()
+	token := tokenizer.Token()
+	expedition.Place = token.String()
+
+	//Скипаем закрывающий тэг параграфа
+	tokenizer.Next()
+
+	//Скипаем пустой текст после закрывающего тэга
+	tokenizer.Next()
+	//Скипаем открывающий тэг нового параграфа
+	tokenizer.Next()
+
+	//Разберем тэг с ссылкой
+	tokenizer.Next()
+	token = tokenizer.Token()
+
+	for _, a := range token.Attr {
+		if a.Key == "href" {
+			expedition.Link = a.Val
+		}
+	}
+
+	//Разберем текст после тэга с ссылкой (название)
+	tokenizer.Next()
+	token = tokenizer.Token()
+	expedition.Name = strings.TrimSpace(token.Data)
+
+	//Перейдем к следующему токену
+	tokenizer.Next()
+	return expedition
+}
+
+func ParseHTML(url string) []Expedition {
 	res, err := http.Get(url)
+	defer res.Body.Close()
+
 	if err != nil {
-		fmt.Println(2)
-		res.Body.Close()
 		log.Panic(err)
 	}
 	if res.StatusCode != http.StatusOK {
-		fmt.Println(3)
-		res.Body.Close()
 		log.Panic("Failed to get html")
 	}
-	fmt.Println(4)
-	z := html.NewTokenizer(res.Body)
-	tt := z.Next()
 
-	for tt != html.ErrorToken {
-	
-		switch {
-		case tt == html.ErrorToken:
-			// End of the document, we're done
-			break
-		case tt == html.StartTagToken:
-			t := z.Token()
-	
-			if (t.Data == "p"){
-				fmt.Println(11)
+	tokenizer := html.NewTokenizer(res.Body)
 
-				for _, a := range t.Attr{
-					fmt.Println(22)
-
-					if a.Key == "class"{
-						fmt.Println(a.Val)
-
-						if strings.Contains(a.Val, "exp_title_place"){
-							fmt.Println(t)
-							fmt.Println(44)
-
-						}
-					}
-	
-					
-				}
-			}
-
-			
-		}
-		tt = z.Next()
-
-	}
-
-
-
-
-	// if err != nil {
-	// 	res.Body.Close()
-	// 	log.Panic(err)
-	// }
-
-	// for _, a := range doc.Attr {
-	// 	fmt.Println(777)
-	// 	fmt.Println(a)
-	// }
-	res.Body.Close()
-	fmt.Printf("doc = %v\n", z)
-	fmt.Println(5)
-	return nil
+	//tokenType := tokenizer.Next()
+	//fmt.Printf("doc = %v\n", tokenizer)
+	return parseTokenizer(tokenizer)
 }
+
+// func ParseHtmlTag(token html.Token, tokenizer *html.Tokenizer, expedition Expedition) (tokenType html.TokenType) {
+//  for _, a := range token.Attr {
+//   if strings.Contains(a.Val, "exp_title_place") {
+//    tokenType = tokenizer.Next()
+
+//    if tokenType == html.TextToken {
+//     token := tokenizer.Token()
+//     expedition.Place = token.String()
+//    }
+
+//   } else if strings.Contains(a.Val, "exp_title_h") {
+//    if tokenType == html.TextToken {
+//     token := tokenizer.Token()
+//     expedition.Name = token.String()
+//    }
+//   }
+//  }
+//  return expedition
+// }
+
+// case tokenType == html.TextToken && foundOpenPlaceTag:
+//  token := tokenizer.Token()
+//  foundOpenPlaceTag = false
+//  fmt.Println(token)
+//  expedition.Place = token.String()
+
+// case tokenType == html.TextToken && foundOpenHTag:
+//  token := tokenizer.Token()
+//  foundOpenPlaceTag = false
+//  fmt.Println(token)
+//  expedition.Name = token.String()
+// }
+
+// for tokenType != html.ErrorToken {
+//  if tokenType == html.StartTagToken {
+//   token := tokenizer.Token()
+//   if token.Data == "p" {
+//    tokenType = ParseHtmlTag(token, tokenizer, expedition)
+
+//   }
+//  }
+
+//  tokenType = tokenizer.Next()
+// }

@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"log"
 	"time"
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type Form struct {
@@ -32,7 +33,7 @@ func main() {
 	u.Timeout = 60
 
 	expeditionList := parsing.ParseHTML(expeditionUrl)
-	go continiousParseExpedition (expeditionList)
+	go continiousParseExpedition(expeditionList)
 	fmt.Println(expeditionList)
 
 	var form Form
@@ -69,11 +70,11 @@ func main() {
 	}
 }
 
-func continiousParseExpedition (expeditionList []parsing.Expedition) {
+func continiousParseExpedition(expeditionList []parsing.Expedition) {
 	c := time.Tick(1 * time.Minute)
 	for now := range c {
-			fmt.Println("tick", now)
-			expeditionList = parsing.ParseHTML(expeditionUrl)
+		fmt.Println("tick", now)
+		expeditionList = parsing.ParseHTML(expeditionUrl)
 	}
 
 }
@@ -92,7 +93,7 @@ func check_info(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI, form Form) {
 }
 
 func find(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI) {
-	expList := parsing.ParseHTML("https://russiantravelgeek.com/expeditions/")//убрать
+	expList := parsing.ParseHTML("https://russiantravelgeek.com/expeditions/") //убрать
 	msg.ParseMode = "HTML"
 
 	//msg.DisableWebPagePreview = false
@@ -117,8 +118,19 @@ func ask_expediton(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI, updates tgb
 	}
 
 	for update := range updates {
-		if update.Message != nil {
-			form.expediton = update.Message.Text
+		if update.CallbackQuery != nil {
+			// Respond to the callback query, telling Telegram to show the user
+			// a message with the data received.
+			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, update.CallbackQuery.Data)
+			if _, err := bot.Request(callback); err != nil {
+				panic(err)
+			}
+			form.expediton = callback.Text
+			// And finally, send a message containing the data received.
+			msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Data)
+			if _, err := bot.Send(msg); err != nil {
+				panic(err)
+			}
 			break
 		}
 	}
@@ -146,11 +158,15 @@ func ask(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI, updates tgbotapi.Upda
 	}
 }
 
-func setupKeyboard(expeditionList []parsing.Expedition) tgbotapi.InlineKeyboardMarkup{
-	buttons := make([]tgbotapi.InlineKeyboardButton, 0, 10)
+func setupKeyboard(expeditionList []parsing.Expedition) tgbotapi.InlineKeyboardMarkup {
+	buttons := make([][]tgbotapi.InlineKeyboardButton, 0, len(expeditionList))
+
 	for _, expedition := range expeditionList {
-		buttons = append(buttons, tgbotapi.NewInlineKeyboardButton(expedition.Name))
+		buttons = append(buttons,
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData(expedition.Name, expedition.Place)))
 	}
-	var numericKeyboard = tgbotapi.NewInlineKeyboardMarkup(buttons)
+	var numericKeyboard = tgbotapi.NewInlineKeyboardMarkup(buttons...)
+
 	return numericKeyboard
 }
