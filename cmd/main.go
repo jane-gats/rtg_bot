@@ -15,12 +15,28 @@ import (
 )
 
 type Form struct {
-	tg_name   string
-	expediton string
-	name      string
-	email     string
-	age       string
+	tg_name    string
+	expediton  string
+	name       string
+	email      string
+	age        string
+	social	   string
+	experience string
+	work       string
+	speach     string
+	proud      string
+	companion  string
+	restricts  string
+	conversion string
+	agreement  string
+	relative   string
 }
+
+const (
+	NilKeyboard = 0
+	YesNoKeyboard = 1
+	ChooseExpeditionKeyboard = 2
+)
 
 // Create a struct that mimics the webhook response body
 // https://core.telegram.org/bots/api#update
@@ -43,6 +59,7 @@ type sendMessageReqBody struct {
 	ChatID    int64  `json:"chat_id"`
 	Text      string `json:"text"`
 	ParseMode string `json:"parse_mode"`
+	//ReplyMarkup tgbotapi.InlineKeyboardMarkup `json:"reply_markup"`
 }
 
 const adminChatID int64 = -1001602774786
@@ -87,36 +104,68 @@ func menuHandler(res http.ResponseWriter, req *http.Request) {
 	} else {
 		var chatId = body.Message.Chat.ID
 		if _, ok := openForms[chatId]; !ok {
-			sendMessageReq("Чтобы посмотреть список экспедиций, нажмите /find \nЧтобы подать заявку на экспедицию, нажмите /go", body.Message.Chat.ID)
+			sendMessageReq("Чтобы посмотреть список экспедиций, нажмите /find \nЧтобы подать заявку на экспедицию, нажмите /go", body.Message.Chat.ID, NilKeyboard)
 			return
 		}
 		v := openForms[chatId]
 		if v.tg_name == "" {
-			sendMessageReq("!Чтобы посмотреть список экспедиций, нажмите /find \nЧтобы подать заявку на экспедицию, нажмите /go", body.Message.Chat.ID)
+			sendMessageReq("!Чтобы посмотреть список экспедиций, нажмите /find \nЧтобы подать заявку на экспедицию, нажмите /go", body.Message.Chat.ID, NilKeyboard)
 			return
 		}
 		switch {
 		case v.expediton == "":
 			v.expediton = text
 			fmt.Println("text = " + text)
-			sendMessageReq("Имя и Фамилия", chatId)
+			sendMessageReq("Имя и Фамилия", chatId, NilKeyboard)
 		case v.name == "":
 			v.name = text
-			sendMessageReq("Электронный адрес", chatId)
+			sendMessageReq("Электронный адрес", chatId, NilKeyboard)
 		case v.email == "":
 			v.email = text
-			sendMessageReq("Возраст", chatId)
+			sendMessageReq("Возраст", chatId, NilKeyboard)
 		case v.age == "":
 			v.age = text
-			sendMessageReq("Завка отправлена", chatId)
+			sendMessageReq("Ссылка на самую “обжитую” социальную сеть", chatId, NilKeyboard)
+		case v.social == "":
+			v.social = text
+			sendMessageReq("Мы ранее путешествовали вместе? Есть ли опыт экспедиций с RTG", chatId, YesNoKeyboard)
+			// да/нет
+		case v.experience == "":
+			v.experience = text
+			sendMessageReq("Кем ты работаешь и чем занимаешься в обычной жизни? Можно без особого уточнения. Просто интересно узнать тебя получше", chatId, NilKeyboard)
+		case v.work == "":
+			v.work = text
+			sendMessageReq("Есть желание провести мастер-класс или выступить с интересным спичем? Если да - назови тему", chatId, NilKeyboard)
+		case v.speach == "":
+			v.speach = text
+			sendMessageReq("Чем ты гордишься? Один или пара моментов из жизни, вспоминая которые, ты испытываешь чувство гордости или удовлетворения", chatId, NilKeyboard)
+		case v.proud == "":
+			v.proud = text
+			sendMessageReq("Ты едешь одна/один или с кем-то? Если да - укажи фамилию, чтобы мы рассмотрели ваши заявки вместе. Если нет - не беда. На нашем кэмпе ты познакомишься с множеством прекрасных и удивительных людей", chatId, NilKeyboard)
+		case v.companion == "":
+			v.companion = text
+			sendMessageReq("Есть ли у тебя хронические или иные заболевания, ограничивающие физическую активность или особые пищевые привычки?", chatId, NilKeyboard)
+		case v.restricts == "":
+			v.restricts = text
+			sendMessageReq("Как ты узнала/узнал про RTG? Интересно изучить конверсию", chatId, NilKeyboard)
+		case v.conversion == "":
+			v.conversion = text
+			sendMessageReq("Ты подтверждаешь свое согласие с условиями участия в мероприятии(обработка персональных данных и пр.)? Ознакомиться с условиями следует по ссылке https://bit.ly/2KFSYl8", chatId, YesNoKeyboard)
+			// да/нет
+		case v.agreement == "":
+			v.agreement = text
+			sendMessageReq("Контакт родственника/близкого на случай ЧП (имя, как связаться). Только на крайний случай", chatId, NilKeyboard)
+		case v.relative == "":
+			v.relative = text
+			sendMessageReq("Завка отправлена", chatId, NilKeyboard)
 			delete(openForms, chatId)
+			
 			//todo:проверка формы перед отправкой с возможностью редактирования
 			//отправить в гугл форму
 		}
 
 	}
 
-	// log a confirmation message if the message is sent successfully
 	fmt.Println("reply sent")
 }
 
@@ -141,14 +190,29 @@ func check_info(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI, form Form) {
 		log.Panic(err)
 	}
 }
+func SetupYesNoKeyboard() tgbotapi.InlineKeyboardMarkup {
+	var numericKeyboard = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonURL("1.com", "http://1.com"),
+			tgbotapi.NewInlineKeyboardButtonData("2", "2"),
+		),
+	)
+	return numericKeyboard
+}
+func sendMessageReq(text string, chatID int64, keyboard int) error {
 
-func sendMessageReq(text string, chatID int64) error {
 	// Create the request body struct
 	reqBody := &sendMessageReqBody{
 		ChatID:    chatID,
 		Text:      text,
 		ParseMode: "HTML",
 	}
+
+	// if keyboard == YesNoKeyboard {
+	// 	println("hihi\n")
+	// 	reqBody.ReplyMarkup = SetupYesNoKeyboard()
+	// }
+
 	// Create the JSON body from the struct
 	reqBytes, err := json.Marshal(reqBody)
 	if err != nil {
@@ -168,13 +232,20 @@ func sendMessageReq(text string, chatID int64) error {
 
 func find(chatID int64) error {
 	var text string
+	if expeditionList == nil {
+		err := sendMessageReq("Сейчас нет доступных экспедиций", chatID, NilKeyboard)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
 	for _, val := range expeditionList {
 		text = "<b>" + val.Name + "</b> \n"
 		text += val.Place + "\n"
 		text += val.Link + "\n"
 		text += "\n"
 
-		err := sendMessageReq(text, chatID)
+		err := sendMessageReq(text, chatID, ChooseExpeditionKeyboard)
 		if err != nil {
 			return err
 		}
@@ -187,7 +258,7 @@ func ask(chatID int64, userName string) error {
 	delete(openForms, chatID)
 	openForms[chatID] = &Form{tg_name: userName}
 
-	err := sendMessageReq("Куда идем?", chatID)
+	err := sendMessageReq("Куда идем?", chatID, NilKeyboard)
 	if err != nil {
 		return err
 	}
