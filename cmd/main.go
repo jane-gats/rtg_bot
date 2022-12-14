@@ -20,7 +20,7 @@ type Form struct {
 	name       string
 	email      string
 	age        string
-	social	   string
+	social     string
 	experience string
 	work       string
 	speach     string
@@ -33,8 +33,8 @@ type Form struct {
 }
 
 const (
-	NilKeyboard = 0
-	YesNoKeyboard = 1
+	NilKeyboard              = 0
+	YesNoKeyboard            = 1
 	ChooseExpeditionKeyboard = 2
 )
 
@@ -56,10 +56,15 @@ type webhookReqBody struct {
 // of the send message request
 // https://core.telegram.org/bots/api#sendmessage
 type sendMessageReqBody struct {
-	ChatID    int64  `json:"chat_id"`
-	Text      string `json:"text"`
-	ParseMode string `json:"parse_mode"`
-	//ReplyMarkup tgbotapi.InlineKeyboardMarkup `json:"reply_markup"`
+	ChatID      int64  `json:"chat_id"`
+	Text        string `json:"text"`
+	ParseMode   string `json:"parse_mode"`
+	ReplyMarkup struct {
+		InlineKeyboardButton []struct {
+			Text         string `json:"text"`
+			CallbackData string `json:"callback_data"`
+		} `json:"inline_keyboard"`
+	} `json:"reply_markup"`
 }
 
 const adminChatID int64 = -1001602774786
@@ -159,7 +164,7 @@ func menuHandler(res http.ResponseWriter, req *http.Request) {
 			v.relative = text
 			sendMessageReq("Завка отправлена", chatId, NilKeyboard)
 			delete(openForms, chatId)
-			
+
 			//todo:проверка формы перед отправкой с возможностью редактирования
 			//отправить в гугл форму
 		}
