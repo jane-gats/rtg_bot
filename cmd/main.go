@@ -52,19 +52,29 @@ type webhookReqBody struct {
 	} `json:"message"`
 }
 
+type replyMarkup struct {
+	InlineKeyboard [][]inlineKeyboard `json:"inline_keyboard"`
+}
+
+type inlineKeyboard struct {
+	Text         string `json:"text"`
+	CallbackData string `json:"callback_data"`
+}
+
 // Create a struct to conform to the JSON body
 // of the send message request
 // https://core.telegram.org/bots/api#sendmessage
 type sendMessageReqBody struct {
-	ChatID      int64  `json:"chat_id"`
-	Text        string `json:"text"`
-	ParseMode   string `json:"parse_mode"`
-	ReplyMarkup struct {
-		InlineKeyboardButton []struct {
-			Text         string `json:"text"`
-			CallbackData string `json:"callback_data"`
-		} `json:"inline_keyboard"`
-	} `json:"reply_markup"`
+	ChatID    int64  `json:"chat_id"`
+	Text      string `json:"text"`
+	ParseMode string `json:"parse_mode"`
+	// ReplyMarkup struct {
+	// 	InlineKeyboard [][]struct {
+	// 		Text         string `json:"text"`
+	// 		CallbackData string `json:"callback_data"`
+	// 	} `json:"inline_keyboard"`
+	// } `json:"reply_markup"`
+	ReplyMarkup replyMarkup `json:"reply_markup"`
 }
 
 const adminChatID int64 = -1001602774786
@@ -195,15 +205,30 @@ func check_info(msg tgbotapi.MessageConfig, bot *tgbotapi.BotAPI, form Form) {
 		log.Panic(err)
 	}
 }
-func SetupYesNoKeyboard() tgbotapi.InlineKeyboardMarkup {
-	var numericKeyboard = tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("1.com", "http://1.com"),
-			tgbotapi.NewInlineKeyboardButtonData("2", "2"),
-		),
-	)
-	return numericKeyboard
+func setupYesNoKeyboard() replyMarkup {
+	// var numericKeyboard = tgbotapi.NewInlineKeyboardMarkup(
+	// 	tgbotapi.NewInlineKeyboardRow(
+	// 		tgbotapi.NewInlineKeyboardButtonURL("1.com", "http://1.com"),
+	// 		tgbotapi.NewInlineKeyboardButtonData("2", "2"),
+	// 	),
+	// )
+	// return numericKeyboard
+	return replyMarkup{
+		InlineKeyboard: [][]inlineKeyboard{
+			{
+				inlineKeyboard{
+					Text:         "Yes",
+					CallbackData: "Yes",
+				},
+				inlineKeyboard{
+					Text:         "Yes",
+					CallbackData: "Yes",
+				},
+			},
+		},
+	}
 }
+
 func sendMessageReq(text string, chatID int64, keyboard int) error {
 
 	// Create the request body struct
